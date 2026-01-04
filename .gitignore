@@ -1,7 +1,7 @@
 # Environment
 .env
 venv/
-.gitignore
+*.md
 
 # Telethon
 *.session

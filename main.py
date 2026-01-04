@@ -1,10 +1,13 @@
 import asyncio
 import os
 import logging
-import json
 import argparse
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
+
+from config import load_config, save_config, get_enabled_destinations
+from notifiers import NOTIFIERS
+from notifiers.telegram import TelegramNotifier
 
 # LOGGING
 LOG_FILE = "bot.log"
@@ -34,43 +37,11 @@ load_dotenv()
 API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
 
-# CONFIG FOR PERSISTENT STORAGE
-CONFIG_FILE = "config.json"
-
 def clear_terminal():
     if os.name == 'nt': # Windows
-        os.system('cls') 
+        os.system('cls')
     else: # Mac and Linux, should be POSIX
         os.system('clear')
-    
-def load_config():
-    """Load monitored chats and keywords from config.json."""
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            data = json.load(f)
-            # Ensure all keys exist (backward compatibility)
-            if 'chats' not in data:
-                data['chats'] = []
-            if 'keywords' not in data:
-                data['keywords'] = []
-            if 'destination' not in data:
-                data['destination'] = None
-            return data
-    except FileNotFoundError:
-        return {"chats": [], "keywords": [], "destination": None}
-    except json.JSONDecodeError:
-        print("Error: config.json is corrupted. Starting with empty config.")
-        return {"chats": [], "keywords": [], "destination": None}
-
-# SAVE CONFIG, CONFIG IS A DICT with chats and keywords keys and arrays as values
-def save_config(config):
-    """Save monitored chats and keywords to config.json."""
-    try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config, f, indent=2)
-    except IOError as e:
-        logger.error(f"Error saving config: {e}")
-        print(f"Error saving config: {e}")
 
 async def manage_chats(client):
     """Display and toggle chats for monitoring."""
@@ -207,84 +178,66 @@ async def manage_keywords():
             print("Invalid choice")
             await asyncio.sleep(1)
 
-async def manage_destination(client):
-    """Configure the forwarding destination for matched messages."""
+async def manage_destinations(client):
+    """Manage forwarding destinations (Telegram, Email, etc.)."""
     global config
 
-    clear_terminal()
-    print("=== FORWARDING DESTINATION ===\n")
-
-    current = config.get('destination')
-    if current:
-        try:
-            entity = await client.get_entity(current)
-            name = getattr(entity, 'title', getattr(entity, 'first_name', 'Unknown'))
-            print(f"Current destination: {name} (ID: {current})")
-        except:
-            print(f"Current destination ID: {current} (unable to resolve name)")
-    else:
-        print("No destination configured.")
-
-    print("\nOptions:")
-    print("  1. Select from your chats")
-    print("  2. Enter chat username/ID manually")
-    print("  3. Clear destination")
-    print("  4. Return to main menu")
-
-    choice = input("\nChoice: ").strip()
-
-    if choice == '1':
-        dialogs = []
-        print("\nLoading chats...")
-        async for dialog in client.iter_dialogs():
-            dialogs.append({
-                'id': dialog.entity.id,
-                'name': dialog.name
-            })
-
+    while True:
         clear_terminal()
-        print("Select a chat as forwarding destination:\n")
-        for i, d in enumerate(dialogs, 1):
-            print(f"{i:3}. {d['name']}")
+        print("=== FORWARDING DESTINATIONS ===\n")
+
+        # Display current status for each notifier
+        destinations = config.get('destinations', {})
+        notifier_list = []
+
+        for name, notifier_cls in NOTIFIERS.items():
+            notifier = notifier_cls()
+            dest_config = destinations.get(name, {})
+            enabled = dest_config.get('enabled', False)
+            status_marker = "[*]" if enabled else "[ ]"
+
+            # Get display status
+            if name == 'telegram' and enabled:
+                # For telegram, try to get chat name
+                tg_notifier = TelegramNotifier(client)
+                status = await tg_notifier.get_display_status_with_name(dest_config, client)
+            else:
+                status = notifier.get_display_status(dest_config)
+
+            notifier_list.append((name, notifier_cls, status_marker, status))
+            print(f"{status_marker} {name.capitalize()}: {status}")
+
+        print("\nOptions:")
+        for i, (name, _, _, _) in enumerate(notifier_list, 1):
+            print(f"  {i}) Configure {name.capitalize()}")
+        print("  q) Back to main menu")
+
+        choice = input("\nChoice: ").strip().lower()
+
+        if choice == 'q':
+            break
 
         try:
-            idx = int(input("\nEnter number: ").strip()) - 1
-            if 0 <= idx < len(dialogs):
-                config['destination'] = dialogs[idx]['id']
-                save_config(config)
-                print(f"Destination set to: {dialogs[idx]['name']}")
+            idx = int(choice) - 1
+            if 0 <= idx < len(notifier_list):
+                name, notifier_cls, _, _ = notifier_list[idx]
+                notifier = notifier_cls()
+
+                # Configure the notifier
+                new_config = await notifier.configure(client)
+
+                if new_config is not None:
+                    # Update config
+                    if 'destinations' not in config:
+                        config['destinations'] = {}
+                    config['destinations'][name] = new_config
+                    save_config(config)
             else:
                 print("Invalid number")
+                await asyncio.sleep(1)
         except ValueError:
             print("Invalid input")
-        await asyncio.sleep(1)
-
-    elif choice == '2':
-        identifier = input("Enter username (with @) or chat ID: ").strip()
-        if identifier:
-            try:
-                entity = await client.get_entity(identifier)
-                config['destination'] = entity.id
-                save_config(config)
-                name = getattr(entity, 'title', getattr(entity, 'first_name', 'Unknown'))
-                print(f"Destination set to: {name}")
-            except Exception as e:
-                print(f"Could not find chat: {e}")
-        else:
-            print("Empty input")
-        await asyncio.sleep(1)
-
-    elif choice == '3':
-        config['destination'] = None
-        save_config(config)
-        print("Destination cleared.")
-        await asyncio.sleep(1)
-
-    elif choice == '4':
-        return
-    else:
-        print("Invalid choice")
-        await asyncio.sleep(1)
+            await asyncio.sleep(1)
 
 async def run_bot(client, exit_on_stop=False):
     """Run the job listing monitor."""
@@ -303,18 +256,22 @@ async def run_bot(client, exit_on_stop=False):
         input("Press Enter to continue...")
         return
 
-    # Get destination chat if configured
-    destination = config.get('destination')
-    if not destination:
-        print("Warning: No forwarding destination set.")
+    # Check enabled destinations
+    enabled = get_enabled_destinations(config)
+    if not enabled:
+        print("Warning: No forwarding destinations enabled.")
         print("Matching messages will only be printed to console.")
         input("Press Enter to continue...")
+
+    # Initialize notifiers
+    telegram_notifier = TelegramNotifier(client)
+    email_notifier = NOTIFIERS.get('email')() if 'email' in NOTIFIERS else None
 
     print(f"\n=== MONITORING ACTIVE ===")
     print(f"Watching {len(config['chats'])} chat(s)")
     print(f"Keywords: {', '.join(config['keywords'])}")
-    if destination:
-        print(f"Forwarding to destination ID: {destination}")
+    if enabled:
+        print(f"Forwarding to: {', '.join(enabled)}")
     print("\nType 'q' and press Enter to stop monitoring.\n")
 
     stop_event = asyncio.Event()
@@ -340,14 +297,30 @@ async def run_bot(client, exit_on_stop=False):
             print(f"Message: {message_text[:200]}{'...' if len(message_text) > 200 else ''}")
             print("-------------------")
 
-            # Forward to destination if configured
-            if destination:
+            destinations = config.get('destinations', {})
+
+            # Forward via Telegram if enabled
+            tg_config = destinations.get('telegram', {})
+            if tg_config.get('enabled') and tg_config.get('chat_id'):
                 try:
-                    await client.forward_messages(destination, event.message)
-                    print(f"Forwarded to destination.")
+                    await client.forward_messages(tg_config['chat_id'], event.message)
+                    print(f"Forwarded to Telegram.")
                 except Exception as e:
                     logger.error(f"Failed to forward message: {e}")
-                    print(f"Failed to forward: {e}")
+                    print(f"Failed to forward to Telegram: {e}")
+
+            # Send via Email if enabled
+            email_config = destinations.get('email', {})
+            if email_config.get('enabled') and email_config.get('recipients'):
+                if email_notifier:
+                    success = await email_notifier.send(
+                        message=message_text,
+                        chat_name=chat_name,
+                        keywords=matched_keywords,
+                        recipients=email_config['recipients']
+                    )
+                    if success:
+                        print(f"Sent via Email.")
 
     # Input listener for quit command
     async def wait_for_quit():
@@ -403,7 +376,7 @@ async def main(monitor_mode=False):
             print("Modes:")
             print("1) Manage Chats")
             print("2) Manage Keywords")
-            print("3) Set Forwarding Destination")
+            print("3) Manage Destinations")
             print("4) Run Monitoring")
             print("5) Exit")
             mode = input("Choose mode (1-5): ")
@@ -413,7 +386,7 @@ async def main(monitor_mode=False):
             elif mode == '2':
                 await manage_keywords()
             elif mode == '3':
-                await manage_destination(client)
+                await manage_destinations(client)
             elif mode == '4':
                 await run_bot(client)
             elif mode == '5':
@@ -433,4 +406,3 @@ if __name__ == '__main__':
 
     logger = setup_logging(args.verbose)
     asyncio.run(main(monitor_mode=args.monitor))
-        
