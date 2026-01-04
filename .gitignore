@@ -1,5 +1,27 @@
+# Environment
 .env
+venv/
+.gitignore
+
+# Telethon
 *.session
-test.py
-texts
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Config
 config.json
+
+# Testing/Dev
+test.py
+texts/
+
+# Logs
+bot.log
+
+# AI
+CLAUDE.md
+
+
