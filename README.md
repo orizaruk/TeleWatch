@@ -112,12 +112,10 @@ telewatch/
 ├── config.json          # Runtime config (auto-generated)
 ├── .env                 # Credentials (create manually)
 ├── bot.log              # Application logs
-├── notifiers/
-│   ├── __init__.py      # Base notifier class
-│   ├── telegram.py      # Telegram forwarding
-│   ├── email.py         # Gmail SMTP
-│   ├── sms.py           # Twilio SMS
-│   └── whatsapp.py      # Twilio WhatsApp
-└── docs/
-    └── ROADMAP.md       # Future plans
+└── notifiers/
+    ├── __init__.py      # Base notifier class
+    ├── telegram.py      # Telegram forwarding
+    ├── email.py         # Gmail SMTP
+    ├── sms.py           # Twilio SMS
+    └── whatsapp.py      # Twilio WhatsApp
 ```
