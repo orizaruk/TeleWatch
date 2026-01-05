@@ -8,7 +8,6 @@ Monitor Telegram chats for keywords and forward matches to multiple channels.
 - Keyword-based filtering (case-insensitive)
 - Multi-channel forwarding: Telegram, Email, SMS, WhatsApp
 - Interactive configuration menu
-- Headless mode for Docker/server deployments
 
 ## Prerequisites
 
