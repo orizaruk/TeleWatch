@@ -433,7 +433,7 @@ async def main(monitor_mode=False):
                 await asyncio.sleep(1)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Telegram Job Listing Monitor')
+    parser = argparse.ArgumentParser(description='TeleWatch - Telegram Keyword Monitor')
     parser.add_argument('-m', '--monitor', action='store_true',
                         help='Skip menu and start monitoring immediately')
     parser.add_argument('-v', '--verbose', action='count', default=0,
