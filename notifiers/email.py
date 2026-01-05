@@ -81,13 +81,22 @@ This alert was sent by your Telegram Job Listing Bot.
             logger.info(f"Email sent to {len(recipients)} recipient(s)")
             return True
 
-        except smtplib.SMTPAuthenticationError:
-            logger.error("Email authentication failed. Check EMAIL_APP_PASSWORD.")
-            print("Email auth failed: Check your App Password in .env")
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"Email authentication failed: {e.smtp_code} - {e.smtp_error}")
+            print(f"Email auth failed (code {e.smtp_code}): {e.smtp_error}")
+            print("\nPossible causes:")
+            print("  - App Password incorrect or has spaces/dashes")
+            print("  - 2FA not enabled on Gmail account (required for App Passwords)")
+            print("  - App Password created for wrong account")
+            print("  - Try generating a new App Password")
+            return False
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error: {type(e).__name__}: {e}")
+            print(f"SMTP error: {type(e).__name__}: {e}")
             return False
         except Exception as e:
-            logger.error(f"Failed to send email: {e}")
-            print(f"Email failed: {e}")
+            logger.error(f"Failed to send email: {type(e).__name__}: {e}")
+            print(f"Email failed: {type(e).__name__}: {e}")
             return False
 
     def _send_email_sync(self, sender: str, password: str, recipients: list,
@@ -116,21 +125,24 @@ This alert was sent by your Telegram Job Listing Bot.
             print("WARNING: Sender email not configured in .env file!")
             print("\nTo use email notifications, add to your .env file:")
             print("  EMAIL_ADDRESS=your@gmail.com")
-            print("  EMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx")
+            print("  EMAIL_APP_PASSWORD=abcdefghijklmnop")
+            print("\nIMPORTANT: The App Password must be 16 characters with NO spaces or dashes.")
+            print("Google shows it as 'XXXX XXXX XXXX XXXX' but enter it as 'XXXXXXXXXXXXXXXX'")
             print("\nTo get an App Password:")
             print("  1. Enable 2FA on your Google account")
             print("  2. Go to: https://myaccount.google.com/apppasswords")
             print("  3. Generate a new App Password for 'Mail'")
-            print("\nSee PLAN-email-notifications.md for details.")
             input("\nPress Enter to continue...")
             return None
 
         print(f"Sender email: {email_addr}")
+        print(f"App password: {'*' * (len(email_pass) - 4)}{email_pass[-4:]} ({len(email_pass)} chars)")
         print("\nOptions:")
         print("  1. Add/replace recipients")
         print("  2. Disable email notifications")
         print("  3. Test email (send test message)")
-        print("  4. Cancel")
+        print("  4. Diagnose connection (verbose)")
+        print("  5. Cancel")
 
         choice = input("\nChoice: ").strip()
 
@@ -176,13 +188,46 @@ This alert was sent by your Telegram Job Listing Bot.
                     recipients=[recipients_input]
                 )
                 if success:
-                    print("Test email sent successfully!")
+                    print("\nTest email sent successfully!")
                 else:
-                    print("Test email failed. Check your .env configuration.")
-            await asyncio.sleep(2)
+                    print("\nTest email failed. Check your .env configuration.")
+                    print("Note: App Password should be 16 characters with NO spaces or dashes.")
+                    print("See bot.log for detailed error information.")
+            input("\nPress Enter to continue...")
             return None
 
         elif choice == '4':
+            # Verbose diagnostic
+            print("\n=== EMAIL DIAGNOSTIC ===")
+            print(f"Email address: {email_addr}")
+            print(f"Password length: {len(email_pass)} characters")
+            print(f"Password has spaces: {' ' in email_pass}")
+            print(f"Password has dashes: {'-' in email_pass}")
+
+            print("\nAttempting SMTP connection to smtp.gmail.com:465...")
+            try:
+                import ssl
+                context = ssl.create_default_context()
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as server:
+                    print("  Connected to Gmail SMTP server")
+                    server.set_debuglevel(1)  # Enable SMTP debug output
+                    print(f"\nAttempting login as {email_addr}...")
+                    server.login(email_addr, email_pass)
+                    print("\n  LOGIN SUCCESSFUL!")
+            except smtplib.SMTPAuthenticationError as e:
+                print(f"\n  LOGIN FAILED: {e.smtp_code} - {e.smtp_error}")
+                if b'BadCredentials' in e.smtp_error or b'Username and Password not accepted' in e.smtp_error:
+                    print("\n  This usually means:")
+                    print("    1. The App Password is wrong")
+                    print("    2. You're using your regular Gmail password instead of App Password")
+                    print("    3. 2FA is not enabled (required for App Passwords)")
+            except Exception as e:
+                print(f"\n  ERROR: {type(e).__name__}: {e}")
+
+            input("\nPress Enter to continue...")
+            return None
+
+        elif choice == '5':
             return None
 
         return None

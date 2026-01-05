@@ -5,6 +5,7 @@ venv/
 
 # Telethon
 *.session
+*.session-journal
 
 # Python
 __pycache__/

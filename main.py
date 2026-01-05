@@ -187,10 +187,16 @@ async def manage_destinations(client):
         print("=== FORWARDING DESTINATIONS ===\n")
 
         # Display current status for each notifier
+        # Note: 'whatsapp' is hidden from UI due to Sandbox limitations (template-only messages)
+        # Backend remains functional if manually enabled in config.json
+        hidden_notifiers = ('whatsapp',)
         destinations = config.get('destinations', {})
         notifier_list = []
 
         for name, notifier_cls in NOTIFIERS.items():
+            if name in hidden_notifiers:
+                continue  # Skip hidden notifiers in UI
+
             notifier = notifier_cls()
             dest_config = destinations.get(name, {})
             enabled = dest_config.get('enabled', False)
@@ -205,11 +211,13 @@ async def manage_destinations(client):
                 status = notifier.get_display_status(dest_config)
 
             notifier_list.append((name, notifier_cls, status_marker, status))
-            print(f"{status_marker} {name.capitalize()}: {status}")
+            display_name = 'SMS' if name == 'sms' else name.capitalize()
+            print(f"{status_marker} {display_name}: {status}")
 
         print("\nOptions:")
         for i, (name, _, _, _) in enumerate(notifier_list, 1):
-            print(f"  {i}) Configure {name.capitalize()}")
+            display_name = 'SMS' if name == 'sms' else name.capitalize()
+            print(f"  {i}) Configure {display_name}")
         print("  q) Back to main menu")
 
         choice = input("\nChoice: ").strip().lower()
@@ -266,6 +274,8 @@ async def run_bot(client, exit_on_stop=False):
     # Initialize notifiers
     telegram_notifier = TelegramNotifier(client)
     email_notifier = NOTIFIERS.get('email')() if 'email' in NOTIFIERS else None
+    sms_notifier = NOTIFIERS.get('sms')() if 'sms' in NOTIFIERS else None
+    whatsapp_notifier = NOTIFIERS.get('whatsapp')() if 'whatsapp' in NOTIFIERS else None
 
     print(f"\n=== MONITORING ACTIVE ===")
     print(f"Watching {len(config['chats'])} chat(s)")
@@ -321,6 +331,32 @@ async def run_bot(client, exit_on_stop=False):
                     )
                     if success:
                         print(f"Sent via Email.")
+
+            # Send via SMS if enabled
+            sms_config = destinations.get('sms', {})
+            if sms_config.get('enabled') and sms_config.get('phone'):
+                if sms_notifier:
+                    success = await sms_notifier.send(
+                        message=message_text,
+                        chat_name=chat_name,
+                        keywords=matched_keywords,
+                        phone=sms_config['phone']
+                    )
+                    if success:
+                        print(f"Sent via SMS.")
+
+            # Send via WhatsApp if enabled
+            wa_config = destinations.get('whatsapp', {})
+            if wa_config.get('enabled') and wa_config.get('phone'):
+                if whatsapp_notifier:
+                    success = await whatsapp_notifier.send(
+                        message=message_text,
+                        chat_name=chat_name,
+                        keywords=matched_keywords,
+                        phone=wa_config['phone']
+                    )
+                    if success:
+                        print(f"Sent via WhatsApp.")
 
     # Input listener for quit command
     async def wait_for_quit():

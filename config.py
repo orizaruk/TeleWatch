@@ -12,7 +12,9 @@ DEFAULT_CONFIG = {
     "keywords": [],
     "destinations": {
         "telegram": {"enabled": False, "chat_id": None},
-        "email": {"enabled": False, "recipients": []}
+        "email": {"enabled": False, "recipients": []},
+        "sms": {"enabled": False, "phone": None},
+        "whatsapp": {"enabled": False, "phone": None}
     }
 }
 

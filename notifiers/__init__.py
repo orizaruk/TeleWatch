@@ -77,3 +77,5 @@ class BaseNotifier(ABC):
 # Import notifiers to register them
 from . import telegram
 from . import email
+from . import sms
+from . import whatsapp
