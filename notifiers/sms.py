@@ -97,8 +97,9 @@ class SMSNotifier(BaseNotifier):
             to=to_number
         )
 
-    async def configure(self, client=None) -> dict:
+    async def configure(self, client=None, existing_config: dict = None) -> dict:
         """Configure SMS recipient interactively."""
+        existing_config = existing_config or {}
         clear_terminal()
         print("=== SMS CONFIGURATION ===\n")
 
@@ -167,20 +168,29 @@ class SMSNotifier(BaseNotifier):
             return {"enabled": False, "phone": None}
 
         elif choice == '3':
-            # Test SMS functionality
-            phone_input = input("Enter test phone number (with country code): ").strip()
-            if phone_input:
-                print("Sending test SMS...")
-                success = await self.send(
-                    message="This is a test message from your Telegram Job Listing Bot.",
-                    chat_name="Test",
-                    keywords=["test"],
-                    phone=phone_input
-                )
-                if success:
-                    print("\nTest SMS sent successfully!")
-                else:
-                    print("\nTest SMS failed. Check your Twilio configuration.")
+            # Test SMS functionality - use existing number if configured
+            existing_phone = existing_config.get('phone')
+            if existing_phone:
+                print(f"Sending test SMS to {existing_phone}...")
+                phone_to_test = existing_phone
+            else:
+                phone_input = input("Enter test phone number (with country code): ").strip()
+                if not phone_input:
+                    input("\nNo phone number entered. Press Enter to continue...")
+                    return None
+                phone_to_test = phone_input
+
+            print("Sending test SMS...")
+            success = await self.send(
+                message="This is a test message from your Telegram Job Listing Bot.",
+                chat_name="Test",
+                keywords=["test"],
+                phone=phone_to_test
+            )
+            if success:
+                print("\nTest SMS sent successfully!")
+            else:
+                print("\nTest SMS failed. Check your Twilio configuration.")
             input("\nPress Enter to continue...")
             return None
 

@@ -63,11 +63,11 @@ def setup_logging(verbosity=0):
 
 async def health_monitor(stop_event):
     """Write timestamp to health file periodically for external monitoring."""
+    from datetime import datetime, timezone
     while not stop_event.is_set():
         try:
             with open(HEALTH_FILE, 'w') as f:
-                from datetime import datetime
-                f.write(datetime.utcnow().isoformat() + '\n')
+                f.write(datetime.now(timezone.utc).isoformat() + '\n')
             if logger:
                 logger.debug(f"Health check written to {HEALTH_FILE}")
         except Exception as e:
@@ -86,6 +86,37 @@ async def health_monitor(stop_event):
 load_dotenv()
 API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
+
+def validate_credentials():
+    """Check for required Telegram API credentials and show helpful error if missing."""
+    if not API_ID or not API_HASH:
+        print("\n" + "="*50)
+        print("ERROR: Telegram API credentials not found.")
+        print("="*50)
+        print("\nPlease create a .env file in the project root with:")
+        print()
+        print("  API_ID=your_api_id")
+        print("  API_HASH=your_api_hash")
+        print()
+        print("To get these credentials:")
+        print("  1. Go to https://my.telegram.org/apps")
+        print("  2. Log in with your phone number")
+        print("  3. Create an application (any name)")
+        print("  4. Copy the api_id and api_hash")
+        print()
+        return False
+    return True
+
+def format_destination_name(name: str) -> str:
+    """Format destination name for display (proper capitalization)."""
+    name_map = {
+        'telegram': 'Telegram',
+        'email': 'Email',
+        'sms': 'SMS',
+        'whatsapp': 'WhatsApp',
+    }
+    return name_map.get(name, name.capitalize())
+
 
 def clear_terminal():
     if os.name == 'nt': # Windows
@@ -281,8 +312,9 @@ async def manage_destinations(client):
                 name, notifier_cls, _, _ = notifier_list[idx]
                 notifier = notifier_cls()
 
-                # Configure the notifier
-                new_config = await notifier.configure(client)
+                # Configure the notifier (pass existing config for context)
+                existing_config = destinations.get(name, {})
+                new_config = await notifier.configure(client, existing_config)
 
                 if new_config is not None:
                     # Update config
@@ -337,7 +369,8 @@ async def run_bot(client, exit_on_stop=False):
     print(f"Watching {len(config['chats'])} chat(s)")
     print(f"Keywords: {', '.join(config['keywords'])}")
     if enabled:
-        print(f"Forwarding to: {', '.join(enabled)}")
+        formatted_destinations = [format_destination_name(d) for d in enabled]
+        print(f"Forwarding to: {', '.join(formatted_destinations)}")
 
     if exit_on_stop:
         # Daemon mode - signals only
@@ -520,8 +553,24 @@ async def run_bot(client, exit_on_stop=False):
         if exit_on_stop:
             print("\nMonitoring stopped. Exiting...")
         else:
-            print("\nMonitoring stopped. Returning to main menu...")
-        await asyncio.sleep(1)
+            print("\nMonitoring stopped.")
+            input("Press Enter to return to main menu...")
+
+def phone_prompt():
+    """Custom phone number prompt with format instructions."""
+    print("\n" + "="*50)
+    print("TELEGRAM AUTHENTICATION")
+    print("="*50)
+    print("\nEnter your phone number in international format.")
+    print("Example: +14155551234 (US) or +447911123456 (UK)")
+    print()
+    return input("Phone number: ").strip()
+
+
+def code_prompt():
+    """Custom code prompt."""
+    return input("Please enter the code you received from Telegram: ").strip()
+
 
 async def main(monitor_mode=False):
 
@@ -531,7 +580,10 @@ async def main(monitor_mode=False):
     config = load_config()
     keywords = config["keywords"]
 
-    async with TelegramClient(session='sesh', api_id=API_ID, api_hash=API_HASH) as client:
+    client = TelegramClient(session='sesh', api_id=API_ID, api_hash=API_HASH)
+    await client.start(phone=phone_prompt, code_callback=code_prompt)
+
+    try:
         # Direct monitor mode - skip menu
         if monitor_mode:
             await run_bot(client, exit_on_stop=True)
@@ -563,6 +615,8 @@ async def main(monitor_mode=False):
             else:
                 print("Invalid choice, choose 1-5.")
                 await asyncio.sleep(1)
+    finally:
+        await client.disconnect()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='TeleWatch - Telegram Keyword Monitor')
@@ -573,4 +627,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     logger = setup_logging(args.verbose)
+
+    # Validate credentials before attempting to connect
+    if not validate_credentials():
+        exit(1)
+
     asyncio.run(main(monitor_mode=args.monitor))

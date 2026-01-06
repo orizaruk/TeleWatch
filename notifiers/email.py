@@ -97,8 +97,9 @@ This alert was sent by your Telegram Job Listing Bot.
             server.login(sender, password)
             server.send_message(msg)
 
-    async def configure(self, client=None) -> dict:
+    async def configure(self, client=None, existing_config: dict = None) -> dict:
         """Configure email recipients interactively."""
+        existing_config = existing_config or {}
         clear_terminal()
         print("=== EMAIL CONFIGURATION ===\n")
 
@@ -162,22 +163,31 @@ This alert was sent by your Telegram Job Listing Bot.
             return {"enabled": False, "recipients": []}
 
         elif choice == '3':
-            # Test email functionality
-            recipients_input = input("Enter test recipient email: ").strip()
-            if recipients_input:
-                print("Sending test email...")
-                success = await self.send(
-                    message="This is a test message from your Telegram Job Listing Bot.",
-                    chat_name="Test",
-                    keywords=["test"],
-                    recipients=[recipients_input]
-                )
-                if success:
-                    print("\nTest email sent successfully!")
-                else:
-                    print("\nTest email failed. Check your .env configuration.")
-                    print("Note: App Password should be 16 characters with NO spaces or dashes.")
-                    print("See bot.log for detailed error information.")
+            # Test email functionality - use existing recipients if configured
+            existing_recipients = existing_config.get('recipients', [])
+            if existing_recipients:
+                print(f"Sending test email to {existing_recipients[0]}...")
+                recipients_to_test = existing_recipients
+            else:
+                recipients_input = input("Enter test recipient email: ").strip()
+                if not recipients_input:
+                    input("\nNo email entered. Press Enter to continue...")
+                    return None
+                recipients_to_test = [recipients_input]
+
+            print("Sending test email...")
+            success = await self.send(
+                message="This is a test message from your Telegram Job Listing Bot.",
+                chat_name="Test",
+                keywords=["test"],
+                recipients=recipients_to_test
+            )
+            if success:
+                print("\nTest email sent successfully!")
+            else:
+                print("\nTest email failed. Check your .env configuration.")
+                print("Note: App Password should be 16 characters with NO spaces or dashes.")
+                print("See bot.log for detailed error information.")
             input("\nPress Enter to continue...")
             return None
 

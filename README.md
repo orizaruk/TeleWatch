@@ -27,11 +27,14 @@ python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # or: venv\Scripts\activate  # Windows
 
-# Core dependencies
-pip install telethon python-dotenv
+# Install all dependencies
+pip install -r requirements.txt
+```
 
-# Optional: for SMS/WhatsApp notifications
-pip install twilio
+Or manually:
+```bash
+pip install telethon python-dotenv   # Core
+pip install twilio                   # Optional: SMS/WhatsApp
 ```
 
 ## Quick Start

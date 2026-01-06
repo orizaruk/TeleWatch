@@ -133,12 +133,13 @@ class BaseNotifier(ABC):
         pass
 
     @abstractmethod
-    async def configure(self, client=None) -> dict:
+    async def configure(self, client=None, existing_config: dict = None) -> dict:
         """
         Interactive CLI configuration.
 
         Args:
             client: TelegramClient instance (needed for Telegram notifier)
+            existing_config: Current configuration for this notifier (for test features)
 
         Returns:
             Configuration dict for this notifier

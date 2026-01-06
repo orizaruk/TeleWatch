@@ -56,7 +56,7 @@ class TelegramNotifier(BaseNotifier):
             print(f"Failed to forward: {e}")
             return False
 
-    async def configure(self, client=None) -> dict:
+    async def configure(self, client=None, existing_config: dict = None) -> dict:
         """Configure Telegram destination interactively."""
         if client:
             self.client = client

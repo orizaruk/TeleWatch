@@ -21,6 +21,7 @@ texts/
 
 # Logs
 bot.log
+health.txt
 
 # AI
 CLAUDE.md

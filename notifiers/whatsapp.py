@@ -96,8 +96,9 @@ class WhatsAppNotifier(BaseNotifier):
             to=to_number
         )
 
-    async def configure(self, client=None) -> dict:
+    async def configure(self, client=None, existing_config: dict = None) -> dict:
         """Configure WhatsApp recipient interactively."""
+        existing_config = existing_config or {}
         clear_terminal()
         print("=== WHATSAPP CONFIGURATION ===\n")
 
@@ -171,22 +172,31 @@ class WhatsAppNotifier(BaseNotifier):
             return {"enabled": False, "phone": None}
 
         elif choice == '3':
-            # Test WhatsApp functionality
-            print("\nIMPORTANT: The test number must have already opted into the Sandbox!")
-            phone_input = input("Enter test phone number (with country code): ").strip()
-            if phone_input:
-                print("Sending test WhatsApp message...")
-                success = await self.send(
-                    message="This is a test message from your Telegram Job Listing Bot.",
-                    chat_name="Test",
-                    keywords=["test"],
-                    phone=phone_input
-                )
-                if success:
-                    print("\nTest WhatsApp sent successfully!")
-                else:
-                    print("\nTest WhatsApp failed.")
-                    print("Make sure the number has opted into the Twilio Sandbox.")
+            # Test WhatsApp functionality - use existing number if configured
+            existing_phone = existing_config.get('phone')
+            if existing_phone:
+                print(f"Sending test WhatsApp to {existing_phone}...")
+                phone_to_test = existing_phone
+            else:
+                print("\nIMPORTANT: The test number must have already opted into the Sandbox!")
+                phone_input = input("Enter test phone number (with country code): ").strip()
+                if not phone_input:
+                    input("\nNo phone number entered. Press Enter to continue...")
+                    return None
+                phone_to_test = phone_input
+
+            print("Sending test WhatsApp message...")
+            success = await self.send(
+                message="This is a test message from your Telegram Job Listing Bot.",
+                chat_name="Test",
+                keywords=["test"],
+                phone=phone_to_test
+            )
+            if success:
+                print("\nTest WhatsApp sent successfully!")
+            else:
+                print("\nTest WhatsApp failed.")
+                print("Make sure the number has opted into the Twilio Sandbox.")
             input("\nPress Enter to continue...")
             return None
 
