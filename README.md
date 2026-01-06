@@ -108,7 +108,9 @@ Use the menu to configure chats, keywords, and destinations. This creates `confi
 python main.py -m
 ```
 
-Skips menu, starts monitoring immediately. Stops on SIGTERM/SIGINT.
+Skips menu, starts monitoring immediately. Stops on SIGTERM/SIGINT (Linux/macOS) or Ctrl+C (Windows).
+
+> **Note:** On Windows, daemon mode has limited signal handling. For 24/7 operation, Docker deployment (which runs Linux) is recommended.
 
 ### Verbose Logging
 
@@ -166,11 +168,18 @@ These override `config.json` values (useful for CI/CD deployments).
 
 ## Health Monitoring
 
-The bot writes a timestamp to `health.txt` every 60 seconds. External monitoring can check file age:
+The bot writes a timestamp to `health.txt` every 60 seconds. External monitoring can check file age.
 
+**Linux/macOS:**
 ```bash
-# Example: alert if file older than 2 minutes
+# Alert if file older than 2 minutes
 find . -name "health.txt" -mmin -2 | grep -q . && echo "healthy" || echo "stale"
+```
+
+**Windows (PowerShell):**
+```powershell
+# Alert if file older than 2 minutes
+if ((Get-Item health.txt -ErrorAction SilentlyContinue).LastWriteTime -gt (Get-Date).AddMinutes(-2)) { "healthy" } else { "stale" }
 ```
 
 ## Project Structure
