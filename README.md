@@ -7,11 +7,7 @@ Monitor Telegram chats for keywords and forward matches to multiple channels.
 - Monitor multiple Telegram chats simultaneously
 - Keyword-based filtering (case-insensitive)
 - Multi-channel forwarding: Telegram, Email, SMS, WhatsApp
-- Interactive configuration menu
 - **Docker support** for 24/7 daemon operation
-- Health monitoring for external watchdogs
-- Log rotation (prevents disk fill)
-- Graceful shutdown with session stats
 
 ## Prerequisites
 
