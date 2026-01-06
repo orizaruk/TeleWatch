@@ -130,8 +130,8 @@ For 24/7 unattended operation:
 ```bash
 python main.py
 # Authenticate with Telegram, configure chats/keywords/destinations
-# This creates: sesh.session, config.json
 ```
+This creates: sesh.session, config.json which are prerequisites.
 
 ### 2. Create .env file
 
