@@ -6,7 +6,7 @@ import os
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from . import BaseNotifier, register
+from . import BaseNotifier, register, retry_send
 
 logger = logging.getLogger(__name__)
 
@@ -66,38 +66,23 @@ Message:
 This alert was sent by your Telegram Job Listing Bot.
 """
 
-        try:
-            # Run SMTP in executor to not block async loop
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                self._send_email_sync,
-                email_addr,
-                email_pass,
-                recipients,
-                subject,
-                body
-            )
-            logger.info(f"Email sent to {len(recipients)} recipient(s)")
-            return True
+        # Use retry logic for transient failures
+        success = await retry_send(
+            self._send_email_sync,
+            email_addr,
+            email_pass,
+            recipients,
+            subject,
+            body,
+            notifier_name="Email"
+        )
 
-        except smtplib.SMTPAuthenticationError as e:
-            logger.error(f"Email authentication failed: {e.smtp_code} - {e.smtp_error}")
-            print(f"Email auth failed (code {e.smtp_code}): {e.smtp_error}")
-            print("\nPossible causes:")
-            print("  - App Password incorrect or has spaces/dashes")
-            print("  - 2FA not enabled on Gmail account (required for App Passwords)")
-            print("  - App Password created for wrong account")
-            print("  - Try generating a new App Password")
-            return False
-        except smtplib.SMTPException as e:
-            logger.error(f"SMTP error: {type(e).__name__}: {e}")
-            print(f"SMTP error: {type(e).__name__}: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to send email: {type(e).__name__}: {e}")
-            print(f"Email failed: {type(e).__name__}: {e}")
-            return False
+        if success:
+            logger.info(f"Email sent to {len(recipients)} recipient(s)")
+        else:
+            print("Email failed. Check bot.log for details.")
+
+        return success
 
     def _send_email_sync(self, sender: str, password: str, recipients: list,
                          subject: str, body: str) -> None:

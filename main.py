@@ -1,7 +1,9 @@
 import asyncio
 import os
 import logging
+from logging.handlers import RotatingFileHandler
 import argparse
+import signal
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 
@@ -11,10 +13,24 @@ from notifiers.telegram import TelegramNotifier
 
 # LOGGING
 LOG_FILE = "bot.log"
+LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB per file
+LOG_BACKUP_COUNT = 3  # Keep 3 backup files (bot.log.1, bot.log.2, bot.log.3)
 logger = None  # Initialized in __main__
 
+# HEALTH MONITORING
+HEALTH_FILE = "health.txt"
+HEALTH_INTERVAL = 60  # seconds
+
+# SESSION STATS (reset on each monitoring session)
+stats = {
+    'messages_processed': 0,
+    'matches_found': 0,
+    'notifications_sent': 0,
+    'notifications_failed': 0,
+}
+
 def setup_logging(verbosity=0):
-    """Configure logging based on verbosity level."""
+    """Configure logging based on verbosity level with log rotation."""
     if verbosity >= 2:
         level = logging.DEBUG
     elif verbosity == 1:
@@ -22,15 +38,49 @@ def setup_logging(verbosity=0):
     else:
         level = logging.ERROR
 
+    log_format = '[%(levelname)s %(asctime)s] %(name)s: %(message)s'
+    formatter = logging.Formatter(log_format)
+
+    # Rotating file handler - rotates when file reaches LOG_MAX_BYTES
+    file_handler = RotatingFileHandler(
+        LOG_FILE,
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT
+    )
+    file_handler.setFormatter(formatter)
+
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+
+    # Configure root logger
     logging.basicConfig(
-        format='[%(levelname)s %(asctime)s] %(name)s: %(message)s',
         level=level,
-        handlers=[
-            logging.FileHandler(LOG_FILE),
-            logging.StreamHandler()
-        ]
+        handlers=[file_handler, console_handler]
     )
     return logging.getLogger(__name__)
+
+
+async def health_monitor(stop_event):
+    """Write timestamp to health file periodically for external monitoring."""
+    while not stop_event.is_set():
+        try:
+            with open(HEALTH_FILE, 'w') as f:
+                from datetime import datetime
+                f.write(datetime.utcnow().isoformat() + '\n')
+            if logger:
+                logger.debug(f"Health check written to {HEALTH_FILE}")
+        except Exception as e:
+            if logger:
+                logger.error(f"Failed to write health file: {e}")
+
+        # Wait for interval or stop signal
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=HEALTH_INTERVAL)
+            break  # stop_event was set
+        except asyncio.TimeoutError:
+            pass  # Continue loop
+
 
 # LOAD API_ID and API_HASH from .env
 load_dotenv()
@@ -277,12 +327,24 @@ async def run_bot(client, exit_on_stop=False):
     sms_notifier = NOTIFIERS.get('sms')() if 'sms' in NOTIFIERS else None
     whatsapp_notifier = NOTIFIERS.get('whatsapp')() if 'whatsapp' in NOTIFIERS else None
 
+    # Reset session stats
+    stats['messages_processed'] = 0
+    stats['matches_found'] = 0
+    stats['notifications_sent'] = 0
+    stats['notifications_failed'] = 0
+
     print(f"\n=== MONITORING ACTIVE ===")
     print(f"Watching {len(config['chats'])} chat(s)")
     print(f"Keywords: {', '.join(config['keywords'])}")
     if enabled:
         print(f"Forwarding to: {', '.join(enabled)}")
-    print("\nType 'q' and press Enter to stop monitoring.\n")
+
+    if exit_on_stop:
+        # Daemon mode - signals only
+        print("\nRunning in daemon mode. Send SIGTERM or SIGINT to stop.\n")
+    else:
+        # Interactive mode - 'q' input or signals
+        print("\nType 'q' and press Enter to stop monitoring.\n")
 
     stop_event = asyncio.Event()
 
@@ -290,6 +352,7 @@ async def run_bot(client, exit_on_stop=False):
     @client.on(events.NewMessage(chats=config['chats']))
     async def handler(event):
         message_text = event.message.message or ""
+        stats['messages_processed'] += 1
 
         # Check if any keyword matches (case-insensitive)
         matched_keywords = [
@@ -298,6 +361,7 @@ async def run_bot(client, exit_on_stop=False):
         ]
 
         if matched_keywords:
+            stats['matches_found'] += 1
             chat = await event.get_chat()
             chat_name = getattr(chat, 'title', getattr(chat, 'first_name', 'Unknown'))
 
@@ -314,8 +378,10 @@ async def run_bot(client, exit_on_stop=False):
             if tg_config.get('enabled') and tg_config.get('chat_id'):
                 try:
                     await client.forward_messages(tg_config['chat_id'], event.message)
+                    stats['notifications_sent'] += 1
                     print(f"Forwarded to Telegram.")
                 except Exception as e:
+                    stats['notifications_failed'] += 1
                     logger.error(f"Failed to forward message: {e}")
                     print(f"Failed to forward to Telegram: {e}")
 
@@ -330,7 +396,10 @@ async def run_bot(client, exit_on_stop=False):
                         recipients=email_config['recipients']
                     )
                     if success:
+                        stats['notifications_sent'] += 1
                         print(f"Sent via Email.")
+                    else:
+                        stats['notifications_failed'] += 1
 
             # Send via SMS if enabled
             sms_config = destinations.get('sms', {})
@@ -343,7 +412,10 @@ async def run_bot(client, exit_on_stop=False):
                         phone=sms_config['phone']
                     )
                     if success:
+                        stats['notifications_sent'] += 1
                         print(f"Sent via SMS.")
+                    else:
+                        stats['notifications_failed'] += 1
 
             # Send via WhatsApp if enabled
             wa_config = destinations.get('whatsapp', {})
@@ -356,35 +428,95 @@ async def run_bot(client, exit_on_stop=False):
                         phone=wa_config['phone']
                     )
                     if success:
+                        stats['notifications_sent'] += 1
                         print(f"Sent via WhatsApp.")
+                    else:
+                        stats['notifications_failed'] += 1
 
-    # Input listener for quit command
-    async def wait_for_quit():
-        loop = asyncio.get_event_loop()
-        while not stop_event.is_set():
-            try:
-                user_input = await loop.run_in_executor(None, input)
-                if user_input.strip().lower() == 'q':
-                    stop_event.set()
+    # Set up signal handlers for graceful shutdown (works in Docker)
+    loop = asyncio.get_event_loop()
+
+    def signal_handler(sig):
+        signame = signal.Signals(sig).name
+        logger.info(f"Received {signame}, initiating graceful shutdown...")
+        print(f"\nReceived {signame}, shutting down...")
+        stop_event.set()
+
+    # Register signal handlers (Unix only, but that's where Docker runs)
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, signal_handler, sig)
+        signals_registered = True
+    except NotImplementedError:
+        # Windows doesn't support add_signal_handler
+        signals_registered = False
+        logger.warning("Signal handlers not supported on this platform")
+
+    input_task = None
+
+    # In interactive mode, also listen for 'q' input
+    # In daemon mode (exit_on_stop=True), rely solely on signals
+    if not exit_on_stop:
+        async def wait_for_quit():
+            while not stop_event.is_set():
+                try:
+                    user_input = await loop.run_in_executor(None, input)
+                    if user_input.strip().lower() == 'q':
+                        stop_event.set()
+                        break
+                except EOFError:
+                    # No stdin available, stop listening
                     break
-            except EOFError:
-                break
 
-    # Start input listener task
-    input_task = asyncio.create_task(wait_for_quit())
+        input_task = asyncio.create_task(wait_for_quit())
+
+    # Start health monitoring (writes timestamp to file periodically)
+    health_task = asyncio.create_task(health_monitor(stop_event))
 
     try:
-        # Wait for stop signal
+        # Wait for stop signal (from signal handler or 'q' input)
         await stop_event.wait()
-    except KeyboardInterrupt:
-        stop_event.set()
     finally:
-        input_task.cancel()
+        # Clean up signal handlers
+        if signals_registered:
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.remove_signal_handler(sig)
+
+        # Cancel input task if running
+        if input_task is not None:
+            input_task.cancel()
+            try:
+                await input_task
+            except asyncio.CancelledError:
+                pass
+
+        # Cancel health monitoring task
+        health_task.cancel()
         try:
-            await input_task
+            await health_task
         except asyncio.CancelledError:
             pass
+
         client.remove_event_handler(handler, events.NewMessage(chats=config['chats']))
+
+        # Print session summary stats
+        print("\n=== SESSION SUMMARY ===")
+        print(f"Messages processed: {stats['messages_processed']}")
+        print(f"Matches found: {stats['matches_found']}")
+        print(f"Notifications sent: {stats['notifications_sent']}")
+        if stats['notifications_failed'] > 0:
+            print(f"Notifications failed: {stats['notifications_failed']}")
+        print("=======================")
+
+        # Log stats for daemon mode
+        if logger:
+            logger.info(
+                f"Session ended - Messages: {stats['messages_processed']}, "
+                f"Matches: {stats['matches_found']}, "
+                f"Sent: {stats['notifications_sent']}, "
+                f"Failed: {stats['notifications_failed']}"
+            )
+
         if exit_on_stop:
             print("\nMonitoring stopped. Exiting...")
         else:

@@ -3,7 +3,7 @@
 import asyncio
 import os
 import logging
-from . import BaseNotifier, register
+from . import BaseNotifier, register, retry_send
 
 logger = logging.getLogger(__name__)
 
@@ -72,24 +72,22 @@ class SMSNotifier(BaseNotifier):
         else:
             sms_body += message
 
-        try:
-            # Run Twilio API call in executor to not block async loop
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                self._send_sms_sync,
-                client,
-                from_number,
-                phone,
-                sms_body
-            )
-            logger.info(f"SMS sent to {phone}")
-            return True
+        # Use retry logic for transient failures
+        success = await retry_send(
+            self._send_sms_sync,
+            client,
+            from_number,
+            phone,
+            sms_body,
+            notifier_name="SMS"
+        )
 
-        except Exception as e:
-            logger.error(f"Failed to send SMS: {type(e).__name__}: {e}")
-            print(f"SMS failed: {e}")
-            return False
+        if success:
+            logger.info(f"SMS sent to {phone}")
+        else:
+            print("SMS failed. Check bot.log for details.")
+
+        return success
 
     def _send_sms_sync(self, client, from_number: str, to_number: str, body: str) -> None:
         """Synchronous SMS sending (called via executor)."""

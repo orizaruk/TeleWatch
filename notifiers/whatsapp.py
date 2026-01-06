@@ -3,7 +3,7 @@
 import asyncio
 import os
 import logging
-from . import BaseNotifier, register
+from . import BaseNotifier, register, retry_send
 
 logger = logging.getLogger(__name__)
 
@@ -71,24 +71,22 @@ class WhatsAppNotifier(BaseNotifier):
         to_number = phone if phone.startswith('whatsapp:') else f'whatsapp:{phone}'
         from_number = from_number if from_number.startswith('whatsapp:') else f'whatsapp:{from_number}'
 
-        try:
-            # Run Twilio API call in executor to not block async loop
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                self._send_whatsapp_sync,
-                client,
-                from_number,
-                to_number,
-                wa_body
-            )
-            logger.info(f"WhatsApp sent to {phone}")
-            return True
+        # Use retry logic for transient failures
+        success = await retry_send(
+            self._send_whatsapp_sync,
+            client,
+            from_number,
+            to_number,
+            wa_body,
+            notifier_name="WhatsApp"
+        )
 
-        except Exception as e:
-            logger.error(f"Failed to send WhatsApp: {type(e).__name__}: {e}")
-            print(f"WhatsApp failed: {e}")
-            return False
+        if success:
+            logger.info(f"WhatsApp sent to {phone}")
+        else:
+            print("WhatsApp failed. Check bot.log for details.")
+
+        return success
 
     def _send_whatsapp_sync(self, client, from_number: str, to_number: str, body: str) -> None:
         """Synchronous WhatsApp sending (called via executor)."""

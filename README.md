@@ -8,6 +8,10 @@ Monitor Telegram chats for keywords and forward matches to multiple channels.
 - Keyword-based filtering (case-insensitive)
 - Multi-channel forwarding: Telegram, Email, SMS, WhatsApp
 - Interactive configuration menu
+- **Docker support** for 24/7 daemon operation
+- Health monitoring for external watchdogs
+- Log rotation (prevents disk fill)
+- Graceful shutdown with session stats
 
 ## Prerequisites
 
@@ -91,31 +95,104 @@ Auto-generated on first run. Stores:
 
 ## Usage
 
+### Interactive Mode (for configuration)
+
 ```bash
-# Interactive menu
 python main.py
+```
 
-# Start monitoring directly (requires prior configuration)
+Use the menu to configure chats, keywords, and destinations. This creates `config.json` and `sesh.session`.
+
+### Daemon Mode (for 24/7 operation)
+
+```bash
 python main.py -m
+```
 
-# Enable verbose logging
+Skips menu, starts monitoring immediately. Stops on SIGTERM/SIGINT.
+
+### Verbose Logging
+
+```bash
 python main.py -v      # Warning level
 python main.py -vv     # Debug level
+```
+
+## Docker Deployment
+
+For 24/7 unattended operation:
+
+### 1. Configure first (on host)
+
+```bash
+python main.py
+# Authenticate with Telegram, configure chats/keywords/destinations
+# This creates: sesh.session, config.json
+```
+
+### 2. Create .env file
+
+```bash
+# Required
+API_ID=your_api_id
+API_HASH=your_api_hash
+
+# Optional - for notifications
+EMAIL_ADDRESS=your@gmail.com
+EMAIL_APP_PASSWORD=your_app_password
+TWILIO_ACCOUNT_SID=ACxxxxx
+TWILIO_AUTH_TOKEN=xxxxx
+TWILIO_PHONE_NUMBER=+1234567890
+```
+
+### 3. Run with Docker Compose
+
+```bash
+docker-compose up -d      # Start in background
+docker-compose logs -f    # View logs
+docker-compose down       # Stop gracefully
+```
+
+### Environment Variable Overrides
+
+Instead of `config.json`, you can configure via environment:
+
+```bash
+TELEWATCH_CHATS=123456789,-987654321      # Comma-separated chat IDs
+TELEWATCH_KEYWORDS=python,remote,developer # Comma-separated keywords
+TELEWATCH_DESTINATIONS='{"telegram":{"enabled":true,"chat_id":123}}'  # JSON
+```
+
+These override `config.json` values (useful for CI/CD deployments).
+
+## Health Monitoring
+
+The bot writes a timestamp to `health.txt` every 60 seconds. External monitoring can check file age:
+
+```bash
+# Example: alert if file older than 2 minutes
+find . -name "health.txt" -mmin -2 | grep -q . && echo "healthy" || echo "stale"
 ```
 
 ## Project Structure
 
 ```
 telewatch/
-├── main.py              # Entry point and CLI menu
-├── config.py            # Configuration management
+├── main.py              # Entry point, CLI menu, monitoring loop
+├── config.py            # Configuration management + env var loading
+├── Dockerfile           # Container image definition
+├── docker-compose.yml   # Container orchestration
+├── requirements.txt     # Python dependencies
+├── notifiers/
+│   ├── __init__.py      # Base class, retry logic, registry
+│   ├── telegram.py      # Telegram forwarding
+│   ├── email.py         # Gmail SMTP
+│   ├── sms.py           # Twilio SMS
+│   └── whatsapp.py      # Twilio WhatsApp
+│
+# Generated files (gitignored):
 ├── config.json          # Runtime config (auto-generated)
-├── .env                 # Credentials (create manually)
-├── bot.log              # Application logs
-└── notifiers/
-    ├── __init__.py      # Base notifier class
-    ├── telegram.py      # Telegram forwarding
-    ├── email.py         # Gmail SMTP
-    ├── sms.py           # Twilio SMS
-    └── whatsapp.py      # Twilio WhatsApp
+├── sesh.session         # Telegram auth session
+├── health.txt           # Health check timestamp
+└── bot.log              # Application logs (rotated at 5MB)
 ```

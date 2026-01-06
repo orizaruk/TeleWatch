@@ -1,0 +1,39 @@
+# Virtual environment (dependencies installed fresh in container)
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Session and config (mounted as volumes, not baked into image)
+sesh.session
+config.json
+
+# Environment files (credentials passed via env vars in Docker)
+.env
+.env.*
+
+# Logs (generated at runtime)
+*.log
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation (not needed in container)
+docs/
+*.md
+
+# OS files
+.DS_Store
+Thumbs.db
