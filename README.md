@@ -15,7 +15,7 @@ Monitor Telegram chats for keywords and forward matches to multiple channels.
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.11+
 - Telegram API credentials (API_ID and API_HASH)
 
 ## Installation
