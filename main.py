@@ -259,6 +259,87 @@ async def manage_keywords():
             print("Invalid choice")
             await asyncio.sleep(1)
 
+async def manage_excluded_keywords():
+    """Manage excluded keyword filters."""
+    global config
+
+    while True:
+        clear_terminal()
+        print("=== EXCLUDED KEYWORDS ===\n")
+
+        # Display current excluded keywords
+        excluded = config.get('excluded_keywords', [])
+        if excluded:
+            print("Current excluded keywords:")
+            for i, kw in enumerate(excluded, 1):
+                print(f"  {i}. {kw}")
+        else:
+            print("No excluded keywords configured.")
+
+        print("\nMessages matching a keyword will be SKIPPED if they")
+        print("also contain any of these excluded keywords.")
+
+        print("\nOptions:")
+        print("  'a' - Add excluded keyword")
+        print("  'd' - Delete excluded keyword")
+        print("  'c' - Clear all excluded keywords")
+        print("  'q' - Return to main menu")
+
+        choice = input("\nChoice: ").strip().lower()
+
+        if choice == 'q':
+            break
+
+        elif choice == 'a':
+            keyword = input("Enter keyword to exclude: ").strip()
+            if keyword:
+                if 'excluded_keywords' not in config:
+                    config['excluded_keywords'] = []
+                if keyword.lower() not in [k.lower() for k in config['excluded_keywords']]:
+                    config['excluded_keywords'].append(keyword)
+                    save_config(config)
+                    print(f"Added excluded keyword: '{keyword}'")
+                else:
+                    print("Keyword already exists (case-insensitive)")
+            else:
+                print("Empty keyword not allowed")
+            await asyncio.sleep(1)
+
+        elif choice == 'd':
+            if not config.get('excluded_keywords'):
+                print("No excluded keywords to delete")
+                await asyncio.sleep(1)
+                continue
+
+            try:
+                idx = int(input("Enter number to delete: ").strip()) - 1
+                if 0 <= idx < len(config['excluded_keywords']):
+                    removed = config['excluded_keywords'].pop(idx)
+                    save_config(config)
+                    print(f"Removed excluded keyword: '{removed}'")
+                else:
+                    print("Invalid number")
+            except ValueError:
+                print("Invalid input")
+            await asyncio.sleep(1)
+
+        elif choice == 'c':
+            if not config.get('excluded_keywords'):
+                print("No excluded keywords to clear")
+            else:
+                confirm = input(f"Clear all {len(config['excluded_keywords'])} excluded keyword(s)? (y/n): ").strip().lower()
+                if confirm == 'y':
+                    config['excluded_keywords'] = []
+                    save_config(config)
+                    print("All excluded keywords cleared.")
+                else:
+                    print("Cancelled.")
+            await asyncio.sleep(1)
+
+        else:
+            print("Invalid choice")
+            await asyncio.sleep(1)
+
 async def manage_destinations(client):
     """Manage forwarding destinations (Telegram, Email, etc.)."""
     global config
@@ -368,6 +449,8 @@ async def run_bot(client, exit_on_stop=False):
     print(f"\n=== MONITORING ACTIVE ===")
     print(f"Watching {len(config['chats'])} chat(s)")
     print(f"Keywords: {', '.join(config['keywords'])}")
+    if config.get('excluded_keywords'):
+        print(f"Excluded: {', '.join(config['excluded_keywords'])}")
     if enabled:
         formatted_destinations = [format_destination_name(d) for d in enabled]
         print(f"Forwarding to: {', '.join(formatted_destinations)}")
@@ -392,6 +475,12 @@ async def run_bot(client, exit_on_stop=False):
             kw for kw in config['keywords']
             if kw.lower() in message_text.lower()
         ]
+
+        # Filter out if message contains excluded keywords
+        if matched_keywords and config.get('excluded_keywords'):
+            message_lower = message_text.lower()
+            if any(exc.lower() in message_lower for exc in config['excluded_keywords']):
+                matched_keywords = []  # Skip this message
 
         if matched_keywords:
             stats['matches_found'] += 1
@@ -596,24 +685,27 @@ async def main(monitor_mode=False):
             print("Modes:")
             print("1) Manage Chats")
             print("2) Manage Keywords")
-            print("3) Manage Destinations")
-            print("4) Run Monitoring")
-            print("5) Exit")
-            mode = input("Choose mode (1-5): ")
+            print("3) Manage Excluded Keywords")
+            print("4) Manage Destinations")
+            print("5) Run Monitoring")
+            print("6) Exit")
+            mode = input("Choose mode (1-6): ")
 
             if mode == '1':
                 await manage_chats(client)
             elif mode == '2':
                 await manage_keywords()
             elif mode == '3':
-                await manage_destinations(client)
+                await manage_excluded_keywords()
             elif mode == '4':
-                await run_bot(client)
+                await manage_destinations(client)
             elif mode == '5':
+                await run_bot(client)
+            elif mode == '6':
                 print("Exiting...")
                 break
             else:
-                print("Invalid choice, choose 1-5.")
+                print("Invalid choice, choose 1-6.")
                 await asyncio.sleep(1)
     finally:
         await client.disconnect()

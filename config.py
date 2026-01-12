@@ -10,12 +10,14 @@ logger = logging.getLogger(__name__)
 # Environment variable names for Docker/CI configuration
 ENV_CHATS = "TELEWATCH_CHATS"           # Comma-separated chat IDs
 ENV_KEYWORDS = "TELEWATCH_KEYWORDS"     # Comma-separated keywords
+ENV_EXCLUDED_KEYWORDS = "TELEWATCH_EXCLUDED_KEYWORDS"  # Comma-separated excluded keywords
 ENV_DESTINATIONS = "TELEWATCH_DESTINATIONS"  # JSON string
 
 # Default config structure
 DEFAULT_CONFIG = {
     "chats": [],
     "keywords": [],
+    "excluded_keywords": [],
     "destinations": {
         "telegram": {"enabled": False, "chat_id": None},
         "email": {"enabled": False, "recipients": []},
@@ -58,6 +60,14 @@ def _load_env_overrides() -> dict:
         if logger:
             logger.info(f"Loaded {len(keywords)} keyword(s) from {ENV_KEYWORDS}")
 
+    # Parse TELEWATCH_EXCLUDED_KEYWORDS (comma-separated strings)
+    excluded_env = os.getenv(ENV_EXCLUDED_KEYWORDS)
+    if excluded_env:
+        excluded = [k.strip() for k in excluded_env.split(",") if k.strip()]
+        overrides["excluded_keywords"] = excluded
+        if logger:
+            logger.info(f"Loaded {len(excluded)} excluded keyword(s) from {ENV_EXCLUDED_KEYWORDS}")
+
     # Parse TELEWATCH_DESTINATIONS (JSON string)
     destinations_env = os.getenv(ENV_DESTINATIONS)
     if destinations_env:
@@ -85,12 +95,16 @@ def _migrate_config(data: dict) -> dict:
         for key, default in DEFAULT_CONFIG["destinations"].items():
             if key not in data["destinations"]:
                 data["destinations"][key] = default.copy()
+        # Ensure excluded_keywords exists (migration for older configs)
+        if "excluded_keywords" not in data:
+            data["excluded_keywords"] = []
         return data
 
     # Migrate from old format
     migrated = {
         "chats": data.get("chats", []),
         "keywords": data.get("keywords", []),
+        "excluded_keywords": data.get("excluded_keywords", []),
         "destinations": {
             "telegram": {
                 "enabled": data.get("destination") is not None,
