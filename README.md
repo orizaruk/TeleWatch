@@ -41,7 +41,7 @@
 ### Option 1: Using requirements.txt (Recommended)
 
 ```bash
-git clone <repository-url>
+git clone git@github.com:orizaruk/TeleWatch.git
 cd telewatch
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
