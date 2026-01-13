@@ -1,14 +1,13 @@
 <h1 align="center">📡 TeleWatch</h1>
 
 <p align="center">
-  <strong>Monitor Telegram chats, forward what matters.</strong><br>
+  <strong>Monitor Telegram chats, forward what you need.</strong><br>
   A lightweight daemon that watches Telegram chats for keywords and forwards matches to multiple channels.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="Python">
   <img src="https://img.shields.io/badge/docker-ready-blue?style=flat-square" alt="Docker">
-  <img src="https://img.shields.io/github/license/yourusername/telewatch?style=flat-square" alt="License">
 </p>
 
 <p align="center">
