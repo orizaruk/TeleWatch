@@ -3,6 +3,7 @@
 <p align="center">
   <strong>Monitor Telegram chats, forward what you need.</strong><br>
   A lightweight daemon that watches Telegram chats for keywords and forwards matches to multiple channels.
+  Supporting forwarding thorugh e-mail, SMS, WhatsApp, Telegram, Discord and Ntfy.sh.
 </p>
 
 <p align="center">
