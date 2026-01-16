@@ -27,6 +27,7 @@ services:
       # Config overrides (optional - override config.json values)
       # - TELEWATCH_CHATS=${TELEWATCH_CHATS:-}              # Comma-separated chat IDs
       # - TELEWATCH_KEYWORDS=${TELEWATCH_KEYWORDS:-}        # Comma-separated keywords
+      # - TELEWATCH_EXCLUDED_KEYWORDS=${TELEWATCH_EXCLUDED_KEYWORDS:-}  # Comma-separated excluded keywords
       # - TELEWATCH_DESTINATIONS=${TELEWATCH_DESTINATIONS:-}  # JSON string
 
     # Graceful shutdown (wait for SIGTERM handling)

@@ -177,3 +177,5 @@ from . import telegram
 from . import email
 from . import sms
 from . import whatsapp
+from . import ntfy
+from . import discord

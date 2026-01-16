@@ -30,7 +30,7 @@
 
 - **Multi-Chat Monitoring** — Watch multiple Telegram chats simultaneously
 - **Keyword Filtering** — Case-insensitive matching with exclusion support
-- **Multi-Channel Forwarding** — Telegram, Email, SMS, WhatsApp
+- **Multi-Channel Forwarding** — Telegram, Email, SMS, WhatsApp, ntfy.sh, Discord
 - **Docker Support** — Ready for 24/7 daemon operation
 - **Health Monitoring** — Built-in heartbeat for external monitoring
 
@@ -42,7 +42,7 @@
 
 ```bash
 git clone git@github.com:orizaruk/TeleWatch.git
-cd telewatch
+cd TeleWatch
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # or: .\venv\Scripts\Activate.ps1  # Windows (PowerShell)
@@ -151,8 +151,15 @@ Configure via environment instead of `config.json` (useful for CI/CD):
 ```bash
 TELEWATCH_CHATS=123456789,-987654321
 TELEWATCH_KEYWORDS=python,remote,developer
-TELEWATCH_DESTINATIONS='{"telegram":{"enabled":true,"chat_id":123}}'
+TELEWATCH_EXCLUDED_KEYWORDS=intern,junior
+TELEWATCH_DESTINATIONS='{"telegram":{"enabled":true,"chat_id":123},"email":{"enabled":true,"recipients":["alerts@example.com"]}}'
 ```
+
+`TELEWATCH_DESTINATIONS` merges into the file-based configuration instead of replacing it.
+
+### WhatsApp Note
+
+WhatsApp support uses the Twilio Sandbox and is hidden from the interactive menu. To enable it, stop the app and set it in `config.json` or via `TELEWATCH_DESTINATIONS`.
 
 ---
 
@@ -188,6 +195,28 @@ TELEWATCH_DESTINATIONS='{"telegram":{"enabled":true,"chat_id":123}}'
 
 </details>
 
+<details>
+<summary><strong>ntfy.sh (for push notifications)</strong></summary>
+
+1. Go to [ntfy.sh](https://ntfy.sh/)
+2. Create a topic (or use a random one for privacy)
+3. Subscribe to the topic on your phone using the [ntfy app](https://ntfy.sh/#subscribe-phone)
+4. Enter just the topic name in the configuration (e.g., `mytopic`, not the full URL)
+
+No account or API key required — ntfy.sh is free and open source.
+
+</details>
+
+<details>
+<summary><strong>Discord (for webhook notifications)</strong></summary>
+
+1. Open Discord and go to the channel where you want notifications
+2. Click the gear icon (Edit Channel) → Integrations → Webhooks
+3. Click "New Webhook" and customize the name/avatar if desired
+4. Copy the webhook URL and paste it in the configuration
+
+</details>
+
 ---
 
 ## Health Monitoring
@@ -220,7 +249,9 @@ telewatch/
 │   ├── telegram.py      # Telegram forwarding
 │   ├── email.py         # Gmail SMTP
 │   ├── sms.py           # Twilio SMS
-│   └── whatsapp.py      # Twilio WhatsApp
+│   ├── whatsapp.py      # Twilio WhatsApp
+│   ├── ntfy.py          # ntfy.sh push notifications
+│   └── discord.py       # Discord webhook
 │
 # Generated files (gitignored):
 ├── config.json          # Runtime config (auto-generated)

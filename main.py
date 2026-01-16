@@ -439,6 +439,8 @@ async def run_bot(client, exit_on_stop=False):
     email_notifier = NOTIFIERS.get('email')() if 'email' in NOTIFIERS else None
     sms_notifier = NOTIFIERS.get('sms')() if 'sms' in NOTIFIERS else None
     whatsapp_notifier = NOTIFIERS.get('whatsapp')() if 'whatsapp' in NOTIFIERS else None
+    ntfy_notifier = NOTIFIERS.get('ntfy')() if 'ntfy' in NOTIFIERS else None
+    discord_notifier = NOTIFIERS.get('discord')() if 'discord' in NOTIFIERS else None
 
     # Reset session stats
     stats['messages_processed'] = 0
@@ -552,6 +554,38 @@ async def run_bot(client, exit_on_stop=False):
                     if success:
                         stats['notifications_sent'] += 1
                         print(f"Sent via WhatsApp.")
+                    else:
+                        stats['notifications_failed'] += 1
+
+            # Send via ntfy.sh if enabled
+            ntfy_config = destinations.get('ntfy', {})
+            if ntfy_config.get('enabled') and ntfy_config.get('topic'):
+                if ntfy_notifier:
+                    success = await ntfy_notifier.send(
+                        message=message_text,
+                        chat_name=chat_name,
+                        keywords=matched_keywords,
+                        topic=ntfy_config['topic']
+                    )
+                    if success:
+                        stats['notifications_sent'] += 1
+                        print(f"Sent via ntfy.")
+                    else:
+                        stats['notifications_failed'] += 1
+
+            # Send via Discord if enabled
+            discord_config = destinations.get('discord', {})
+            if discord_config.get('enabled') and discord_config.get('webhook_url'):
+                if discord_notifier:
+                    success = await discord_notifier.send(
+                        message=message_text,
+                        chat_name=chat_name,
+                        keywords=matched_keywords,
+                        webhook_url=discord_config['webhook_url']
+                    )
+                    if success:
+                        stats['notifications_sent'] += 1
+                        print(f"Sent via Discord.")
                     else:
                         stats['notifications_failed'] += 1
 
