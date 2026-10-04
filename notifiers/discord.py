@@ -7,6 +7,7 @@ import logging
 import urllib.request
 import urllib.error
 from . import BaseNotifier, register, retry_send
+from .links import extract_web_links, pick_click_url, to_discord_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,10 @@ class DiscordNotifier(BaseNotifier):
 
     name = "discord"
 
-    async def send(self, message: str, chat_name: str, keywords: list, webhook_url: str = None) -> bool:
+    async def send(
+        self, message: str, chat_name: str, keywords: list,
+        webhook_url: str = None, telegram_message=None,
+    ) -> bool:
         """
         Send Discord webhook notification.
 
@@ -33,6 +37,7 @@ class DiscordNotifier(BaseNotifier):
             chat_name: Name of the source chat
             keywords: List of matched keywords
             webhook_url: Discord webhook URL (from config)
+            telegram_message: Original Telegram message, including link entities
 
         Returns:
             True if sent successfully
@@ -41,12 +46,16 @@ class DiscordNotifier(BaseNotifier):
             logger.error("No Discord webhook URL configured")
             return False
 
+        click_url = pick_click_url(extract_web_links(telegram_message))
+        message = to_discord_markdown(message, telegram_message)
+
         success = await retry_send(
             self._send_discord_sync,
             webhook_url,
             chat_name,
             keywords,
             message,
+            click_url=click_url,
             notifier_name="Discord"
         )
 
@@ -57,16 +66,21 @@ class DiscordNotifier(BaseNotifier):
 
         return success
 
-    def _send_discord_sync(self, webhook_url: str, chat_name: str, keywords: list, message: str) -> None:
+    def _send_discord_sync(
+        self, webhook_url: str, chat_name: str, keywords: list, message: str,
+        click_url: str = None,
+    ) -> None:
         """Synchronous Discord webhook sending (called via executor)."""
-        payload = {
-            "embeds": [{
-                "title": f"Job Alert [{chat_name}]",
-                "description": message[:4096],  # Discord embed description limit
-                "color": 5814783,  # Blue color
-                "fields": [{"name": "Keywords", "value": ", ".join(keywords), "inline": True}]
-            }]
+        embed = {
+            "title": f"Job Alert [{chat_name}]",
+            "description": message[:4096],  # Discord embed description limit
+            "color": 5814783,  # Blue color
+            "fields": [{"name": "Keywords", "value": ", ".join(keywords), "inline": True}]
         }
+        if click_url:
+            # Makes the embed title itself a link to the listing.
+            embed["url"] = click_url
+        payload = {"embeds": [embed]}
 
         req = urllib.request.Request(
             webhook_url,
@@ -76,7 +90,8 @@ class DiscordNotifier(BaseNotifier):
                 "User-Agent": "TeleWatch/1.0"
             }
         )
-        urllib.request.urlopen(req, timeout=30)
+        with urllib.request.urlopen(req, timeout=30) as response:
+            response.read()
 
     async def configure(self, client=None, existing_config: dict = None) -> dict:
         """Configure Discord webhook interactively."""

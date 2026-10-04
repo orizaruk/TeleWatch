@@ -49,7 +49,7 @@ class TelegramNotifier(BaseNotifier):
             return False
 
         try:
-            await self.client.forward_messages(destination_id, event.message)
+            await self.client.forward_messages(destination_id, event.message, silent=False)
             return True
         except Exception as e:
             logger.error(f"Failed to forward message: {e}")

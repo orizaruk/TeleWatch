@@ -1,13 +1,33 @@
 """ntfy.sh push notification notifier."""
 
 import asyncio
+import json
 import os
 import logging
 import urllib.request
 import urllib.error
 from . import BaseNotifier, register, retry_send
+from .links import extract_web_links, pick_click_url
 
 logger = logging.getLogger(__name__)
+
+
+def format_telegram_links(message: str, telegram_message=None) -> tuple[str, str | None]:
+    """Expose embedded web links and choose a destination for notification taps."""
+    links = extract_web_links(telegram_message)
+    if not links:
+        return message, None
+
+    click_url = pick_click_url(links)
+    visible_urls = {url for _, url, embedded in links if not embedded}
+    extra_lines = []
+    for label, url, embedded in links:
+        if embedded and url not in visible_urls:
+            extra_lines.append(f"{label.strip() or 'Link'}: {url}")
+            visible_urls.add(url)
+    if extra_lines:
+        message += '\n\nLinks:\n' + '\n'.join(extra_lines)
+    return message, click_url
 
 
 def clear_terminal():
@@ -23,7 +43,10 @@ class NtfyNotifier(BaseNotifier):
 
     name = "ntfy"
 
-    async def send(self, message: str, chat_name: str, keywords: list, topic: str = None) -> bool:
+    async def send(
+        self, message: str, chat_name: str, keywords: list,
+        topic: str = None, telegram_message=None,
+    ) -> bool:
         """
         Send ntfy.sh notification.
 
@@ -32,6 +55,7 @@ class NtfyNotifier(BaseNotifier):
             chat_name: Name of the source chat
             keywords: List of matched keywords
             topic: ntfy.sh topic (from config)
+            telegram_message: Original Telegram message, including link entities
 
         Returns:
             True if sent successfully
@@ -41,6 +65,7 @@ class NtfyNotifier(BaseNotifier):
             return False
 
         title = f"Job Alert [{chat_name}]"
+        message, click_url = format_telegram_links(message, telegram_message)
         body = f"Keywords: {', '.join(keywords)}\n\n{message}"
 
         success = await retry_send(
@@ -48,6 +73,7 @@ class NtfyNotifier(BaseNotifier):
             topic,
             title,
             body,
+            click_url=click_url,
             notifier_name="ntfy"
         )
 
@@ -58,14 +84,21 @@ class NtfyNotifier(BaseNotifier):
 
         return success
 
-    def _send_ntfy_sync(self, topic: str, title: str, body: str) -> None:
+    def _send_ntfy_sync(
+        self, topic: str, title: str, body: str, click_url: str = None,
+    ) -> None:
         """Synchronous ntfy.sh sending (called via executor)."""
+        payload = {"topic": topic, "title": title, "message": body}
+        if click_url:
+            payload["click"] = click_url
+        # JSON preserves Unicode in chat names and URLs without HTTP header encoding.
         req = urllib.request.Request(
-            f"https://ntfy.sh/{topic}",
-            data=body.encode('utf-8'),
-            headers={"Title": title}
+            "https://ntfy.sh/",
+            data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+            headers={"Content-Type": "application/json"}
         )
-        urllib.request.urlopen(req, timeout=30)
+        with urllib.request.urlopen(req, timeout=30) as response:
+            response.read()
 
     async def configure(self, client=None, existing_config: dict = None) -> dict:
         """Configure ntfy.sh topic interactively."""

@@ -478,11 +478,24 @@ async def run_bot(client, exit_on_stop=False):
             if kw.lower() in message_text.lower()
         ]
 
-        # Filter out if message contains excluded keywords
-        if matched_keywords and config.get('excluded_keywords'):
-            message_lower = message_text.lower()
-            if any(exc.lower() in message_lower for exc in config['excluded_keywords']):
-                matched_keywords = []  # Skip this message
+        # Record every decision so rejected listings can be traced in Docker logs.
+        source = f"chat_id={event.chat_id} message_id={event.id}"
+        if not matched_keywords:
+            print(f"[FILTER] {source} result=no_keyword_match")
+            return
+
+        excluded_keywords = [
+            exc for exc in config.get('excluded_keywords', [])
+            if exc.lower() in message_text.lower()
+        ]
+        if excluded_keywords:
+            title = message_text.splitlines()[0] if message_text else ""
+            print(
+                f"[FILTER] {source} result=excluded "
+                f"matched={matched_keywords!r} excluded={excluded_keywords!r} "
+                f"title={title[:200]!r}"
+            )
+            return
 
         if matched_keywords:
             stats['matches_found'] += 1
@@ -491,6 +504,7 @@ async def run_bot(client, exit_on_stop=False):
 
             print(f"\n--- MATCH FOUND ---")
             print(f"Chat: {chat_name}")
+            print(f"Source: {source}")
             print(f"Keywords: {', '.join(matched_keywords)}")
             print(f"Message: {message_text[:200]}{'...' if len(message_text) > 200 else ''}")
             print("-------------------")
@@ -501,13 +515,19 @@ async def run_bot(client, exit_on_stop=False):
             tg_config = destinations.get('telegram', {})
             if tg_config.get('enabled') and tg_config.get('chat_id'):
                 try:
-                    await client.forward_messages(tg_config['chat_id'], event.message)
+                    forwarded_message = await client.forward_messages(
+                        tg_config['chat_id'], event.message, silent=False
+                    )
                     stats['notifications_sent'] += 1
-                    print(f"Forwarded to Telegram.")
+                    print(
+                        f"Forwarded to Telegram ({source} "
+                        f"destination_message_id={forwarded_message.id} "
+                        f"silent={bool(forwarded_message.silent)})."
+                    )
                 except Exception as e:
                     stats['notifications_failed'] += 1
-                    logger.error(f"Failed to forward message: {e}")
-                    print(f"Failed to forward to Telegram: {e}")
+                    logger.error(f"Failed to forward message ({source}): {e}")
+                    print(f"Failed to forward to Telegram ({source}): {e}")
 
             # Send via Email if enabled
             email_config = destinations.get('email', {})
@@ -565,7 +585,8 @@ async def run_bot(client, exit_on_stop=False):
                         message=message_text,
                         chat_name=chat_name,
                         keywords=matched_keywords,
-                        topic=ntfy_config['topic']
+                        topic=ntfy_config['topic'],
+                        telegram_message=event.message,
                     )
                     if success:
                         stats['notifications_sent'] += 1
@@ -581,7 +602,8 @@ async def run_bot(client, exit_on_stop=False):
                         message=message_text,
                         chat_name=chat_name,
                         keywords=matched_keywords,
-                        webhook_url=discord_config['webhook_url']
+                        webhook_url=discord_config['webhook_url'],
+                        telegram_message=event.message,
                     )
                     if success:
                         stats['notifications_sent'] += 1
